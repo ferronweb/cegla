@@ -1,0 +1,20 @@
+[package]
+name = "cegla-examples"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lowlevel-cgi-server"
+path = "src/lowlevel/server.rs"
+
+[[bin]]
+name = "lowlevel-cgi-client"
+path = "src/lowlevel/client.rs"
+
+[dependencies]
+bytes = "1.11.0"
+cegla = { workspace = true, features = ["client", "server"] }
+http = "1.4.0"
+http-body-util = "0.1.3"
+tokio = { version = "1.49.0", features = ["full"] }
+tokio-util = { version = "0.7.18", features = ["io-util"] }

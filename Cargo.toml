@@ -1,0 +1,7 @@
+[workspace]
+members = ["cegla", "examples"]
+resolver = "2"
+
+[workspace.dependencies]
+cegla = { path = "./cegla" }
+shiba = "0.1.1"

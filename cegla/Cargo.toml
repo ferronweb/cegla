@@ -1,0 +1,36 @@
+[package]
+name = "cegla"
+version = "0.1.0"
+edition = "2021"
+authors = ["Dorian Niemiec <dorian@ferron.sh>"]
+description = "Low-level parsing library for CGI (and CGI-like protocols)"
+license = "MIT"
+readme = "../README.md"
+keywords = ["http", "cgi", "parsing"]
+categories = ["web-programming", "network-programming", "parsing"]
+documentation = "https://docs.rs/cegla"
+repository = "https://github.com/ferronweb/cegla"
+
+[dependencies]
+bytes = "1.11.0"
+futures-util = "0.3.31"
+hashlink = "0.11.0"
+http = "1.4.0"
+http-body = "1.0.1"
+http-body-util = "0.1.3"
+httparse = { version = "1.10.1", optional = true }
+memchr = "2.7.6"
+smallvec = { version = "1.15.1", optional = true }
+tokio = { version = "1.49.0", features = ["bytes", "io-util"] }
+tokio-util = { version = "0.7.18", features = ["io"] }
+
+[dev-dependencies]
+memchr = "2.7.6"
+tokio = { version = "1.49.0", features = ["io-util", "test-util", "macros"] }
+tokio-test = "0.4.5"
+tokio-util = { version = "0.7.18", features = ["io"] }
+shiba = { workspace = true }
+
+[features]
+client = ["httparse", "smallvec"]
+server = []
