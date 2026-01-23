@@ -84,6 +84,11 @@ impl CgiEnvironment {
   pub fn len(&self) -> usize {
     self.inner.len()
   }
+
+  /// Checks whether the environment is empty.
+  pub fn is_empty(&self) -> bool {
+    self.inner.is_empty()
+  }
 }
 
 impl std::ops::Index<&str> for CgiEnvironment {
