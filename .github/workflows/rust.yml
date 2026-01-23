@@ -17,9 +17,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --verbose
+        run: cargo build -F cegla/client,cegla/server --verbose
       - name: Run tests
-        run: cargo test --lib --verbose
+        run: cargo test -F cegla/client,cegla/server --lib --verbose
 
   check:
     runs-on: ubuntu-latest
@@ -32,4 +32,4 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all -- --check
       - name: clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy -F cegla/client,cegla/server --workspace -- -D warnings
