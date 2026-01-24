@@ -24,3 +24,7 @@ shiba = { workspace = true }
 [features]
 client = ["cegla/client"]
 server = ["cegla/server"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

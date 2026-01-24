@@ -34,3 +34,7 @@ shiba = { workspace = true }
 [features]
 client = ["httparse", "smallvec"]
 server = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -32,3 +32,7 @@ tokio-util = { version = "0.7.18", features = ["io-util"] }
 
 [dev-dependencies]
 shiba = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
