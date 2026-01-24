@@ -1,6 +1,6 @@
 # Changelog
 
-## `cegla` UNRELEASED
+## `cegla` 0.1.2 - January 24, 2025
 
 - Added `cegla-scgi` (a high-level SCGI implementation for Rust)
 - Disabled `cgi-client` feature of `tokio-cegla` by default
