@@ -1,5 +1,9 @@
 # Changelog
 
+## `cegla` UNRELEASED
+
+- The `CONTENT_LENGTH` CGI variable is now overridden if it's present before building a `CgiEnvironment`
+
 ## `cegla` 0.1.2 - January 24, 2025
 
 - Added `cegla-scgi` (a high-level SCGI implementation for Rust)
