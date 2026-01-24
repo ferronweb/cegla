@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! A low-level parsing library for CGI (and CGI-like protocols)
 
 use std::{

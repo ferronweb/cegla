@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Tokio-based runtime support for `cegla-*` crates.
 
 #[cfg(feature = "cgi-client")]
