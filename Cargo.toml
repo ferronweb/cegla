@@ -3,9 +3,9 @@ members = ["cegla", "cegla-cgi", "examples", "tokio-cegla"]
 resolver = "2"
 
 [workspace.dependencies]
-cegla = "0.1.0"
-cegla-cgi = "0.1.0"
-tokio-cegla = "0.1.0"
+cegla = "0.1.1"
+cegla-cgi = "0.1.1"
+tokio-cegla = "0.1.1"
 shiba = "0.1.1"
 
 [patch.crates-io]

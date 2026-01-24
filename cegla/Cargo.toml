@@ -1,6 +1,6 @@
 [package]
 name = "cegla"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Dorian Niemiec <dorian@ferron.sh>"]
 description = "Low-level parsing library for CGI (and CGI-like protocols)"
