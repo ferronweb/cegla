@@ -5,8 +5,14 @@
 ## Components
 
 - **`cegla`** - a low-level parsing library for CGI (and CGI-like protocols)
+- **`cegla-cgi`** - a high-level CGI implementation for Rust
+- **`tokio-cegla`** - Tokio-based runtime support for `cegla-*` crates
 
-High-level CGI, FastCGI and SCGI libraries are coming soon.
+High-level FastCGI and SCGI libraries are coming soon.
+
+## Examples
+
+You can find example code in the `examples` directory in the repository.
 
 ## License
 

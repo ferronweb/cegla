@@ -1,0 +1,23 @@
+[package]
+name = "tokio-cegla"
+version = "0.1.0"
+edition = "2021"
+authors = ["Dorian Niemiec <dorian@ferron.sh>"]
+description = "Tokio-based runtime support for `cegla-*` crates."
+license = "MIT"
+readme = "../README.md"
+keywords = ["http", "cgi", "web"]
+categories = ["web-programming", "network-programming"]
+documentation = "https://docs.rs/tokio-cegla"
+repository = "https://github.com/ferronweb/cegla"
+
+[dependencies]
+tokio = "1.49.0"
+cegla-cgi = { workspace = true, optional = true }
+
+[dev-dependencies]
+shiba = { workspace = true }
+
+[features]
+default = ["cgi-client"]
+cgi-client = ["cegla-cgi", "cegla-cgi/client", "tokio/process", "tokio/rt"]

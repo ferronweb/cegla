@@ -1,0 +1,26 @@
+[package]
+name = "cegla-cgi"
+version = "0.1.0"
+edition = "2021"
+authors = ["Dorian Niemiec <dorian@ferron.sh>"]
+description = "High-level CGI implementation for Rust"
+license = "MIT"
+readme = "../README.md"
+keywords = ["http", "cgi", "web"]
+categories = ["web-programming", "network-programming"]
+documentation = "https://docs.rs/cegla-cgi"
+repository = "https://github.com/ferronweb/cegla"
+
+[dependencies]
+cegla = { workspace = true }
+http = "1.4.0"
+http-body = "1.0.1"
+tokio = "1.49.0"
+tokio-util = { version = "0.7.18", features = ["io"] }
+
+[dev-dependencies]
+shiba = { workspace = true }
+
+[features]
+client = ["cegla/client"]
+server = ["cegla/server"]
