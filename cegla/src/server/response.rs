@@ -51,6 +51,7 @@ where
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Option<Self::Item>> {
     if let Some(headers) = self.headers.take() {
+      // CGI headers
       let mut data = Vec::new();
       for (header_name, header_value) in headers {
         if let Some(header_name) = header_name {
@@ -78,6 +79,8 @@ where
         return Poll::Ready(Some(Ok(Bytes::from_owner(data))));
       }
     }
+
+    // Response body
     match Pin::new(&mut self.body).poll_frame(cx) {
       Poll::Ready(Some(Ok(frame))) => {
         if let Ok(data) = frame.into_data() {

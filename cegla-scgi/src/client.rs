@@ -6,7 +6,7 @@ pub use cegla::client::CgiBuilder;
 
 use cegla::{
   client::{convert_to_http_response, CgiResponseInner},
-  CgiIncoming,
+  CgiEnvironment, CgiIncoming,
 };
 use http_body::Body;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf};
@@ -82,6 +82,38 @@ where
   convert_to_http_response(stdout).await
 }
 
+/// Constructs environment variable netstring for SCGI
+#[inline]
+fn construct_environment_netstring(cgi_environment: CgiEnvironment) -> Vec<u8> {
+  // Construct environment variables to wrap
+  let mut environment_variables_to_wrap = Vec::new();
+  for (key, value) in cgi_environment {
+    let mut environment_variable = Vec::new();
+    let is_content_length = key == "CONTENT_LENGTH";
+    environment_variable.extend(key.into_bytes());
+    environment_variable.push(b'\0');
+    environment_variable.extend(value.into_bytes());
+    environment_variable.push(b'\0');
+    if is_content_length {
+      // According to the SCGI specification, the first environment variable must be "CONTENT_LENGTH"
+      environment_variable.append(&mut environment_variables_to_wrap);
+      environment_variables_to_wrap = environment_variable;
+    } else {
+      environment_variables_to_wrap.append(&mut environment_variable);
+    }
+  }
+
+  // Construct netstring
+  let environment_variables_to_wrap_length = environment_variables_to_wrap.len();
+  let mut netstring = Vec::new();
+  netstring.extend_from_slice(environment_variables_to_wrap_length.to_string().as_bytes());
+  netstring.push(b':');
+  netstring.append(&mut environment_variables_to_wrap);
+  netstring.push(b',');
+
+  netstring
+}
+
 /// Handles SCGI client-side, on a `Send` runtime, returning the response
 pub async fn client_handle_scgi_send<B, R, Io>(
   request: http::Request<B>,
@@ -98,36 +130,15 @@ where
 {
   let (cgi_environment, cgi_data) = env
     .var("SCGI".to_string(), "1".to_string())
+    // CONTENT_LENGTH must be always present, according to SCGI specification
     .var_noreplace("CONTENT_LENGTH".to_string(), "0".to_string())
     .build(request);
   let (read_half, mut write_half) = tokio::io::split(io);
 
-  // Create environment variable netstring
-  let mut environment_variables_to_wrap = Vec::new();
-  for (key, value) in cgi_environment {
-    let mut environment_variable = Vec::new();
-    let is_content_length = key == "CONTENT_LENGTH";
-    environment_variable.extend(key.into_bytes());
-    environment_variable.push(b'\0');
-    environment_variable.extend(value.into_bytes());
-    environment_variable.push(b'\0');
-    if is_content_length {
-      environment_variable.append(&mut environment_variables_to_wrap);
-      environment_variables_to_wrap = environment_variable;
-    } else {
-      environment_variables_to_wrap.append(&mut environment_variable);
-    }
-  }
-
-  let environment_variables_to_wrap_length = environment_variables_to_wrap.len();
-  let mut environment_variables_netstring = Vec::new();
-  environment_variables_netstring.extend_from_slice(environment_variables_to_wrap_length.to_string().as_bytes());
-  environment_variables_netstring.push(b':');
-  environment_variables_netstring.append(&mut environment_variables_to_wrap);
-  environment_variables_netstring.push(b',');
-
-  // Write environment variable netstring
-  write_half.write_all(&environment_variables_netstring).await?;
+  // Write environment variables netstring before the request body
+  write_half
+    .write_all(&construct_environment_netstring(cgi_environment))
+    .await?;
 
   let mut stdin = write_half;
   let stdout = read_half;
