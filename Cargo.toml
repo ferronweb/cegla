@@ -1,16 +1,18 @@
 [workspace]
-members = ["cegla", "cegla-cgi", "examples", "tokio-cegla"]
+members = ["cegla", "cegla-cgi", "cegla-scgi", "examples", "tokio-cegla"]
 resolver = "2"
 
 [workspace.dependencies]
 cegla = "0.1.1"
 cegla-cgi = "0.1.1"
+cegla-scgi = "0.1.1"
 tokio-cegla = "0.1.1"
 shiba = "0.1.1"
 
 [patch.crates-io]
 cegla = { path = "./cegla" }
 cegla-cgi = { path = "./cegla-cgi" }
+cegla-scgi = { path = "./cegla-scgi" }
 tokio-cegla = { path = "./tokio-cegla" }
 
 [workspace.metadata.cargo-shear]

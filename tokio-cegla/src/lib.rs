@@ -6,3 +6,8 @@
 mod cgi;
 #[cfg(feature = "cgi-client")]
 pub use cgi::*;
+
+#[cfg(feature = "scgi-client")]
+mod scgi;
+#[cfg(feature = "scgi-client")]
+pub use scgi::*;
