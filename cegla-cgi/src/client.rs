@@ -89,6 +89,7 @@ pub async fn execute_cgi<B, R>(
   (
     http::Response<CgiIncoming<CgiResponseInner<<R::Child as Child>::Stdout>>>,
     Option<<R::Child as Child>::Stderr>,
+    Option<std::process::ExitStatus>,
   ),
   std::io::Error,
 >
@@ -110,7 +111,7 @@ where
     let _ = tokio::io::copy(&mut cgi_data_reader, &mut stdin).await;
   });
 
-  Ok((convert_to_http_response(stdout).await?, stderr))
+  Ok((convert_to_http_response(stdout).await?, stderr, child.try_status()?))
 }
 
 /// Executes a CGI program, on a `Send` runtime, returning the response and error streams.
@@ -125,6 +126,7 @@ pub async fn execute_cgi_send<B, R>(
   (
     http::Response<CgiIncoming<CgiResponseInner<<R::Child as SendChild>::Stdout>>>,
     Option<<R::Child as SendChild>::Stderr>,
+    Option<std::process::ExitStatus>,
   ),
   std::io::Error,
 >
@@ -146,5 +148,5 @@ where
     let _ = tokio::io::copy(&mut cgi_data_reader, &mut stdin).await;
   });
 
-  Ok((convert_to_http_response(stdout).await?, stderr))
+  Ok((convert_to_http_response(stdout).await?, stderr, child.try_status()?))
 }

@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .uri("http://example.com")
     .body(http_body_util::Empty::<Bytes>::new().map_err(std::io::Error::other))?;
 
-  let (response, _stderr) = execute_cgi_send(
+  let (response, stderr, status) = execute_cgi_send(
     request,
     tokio_cegla::TokioCgiRuntime,
     OsStr::new(&program_to_execute),
@@ -24,6 +24,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     None,
   )
   .await?;
+
+  if let Some(status) = status {
+    if let Some(mut stderr) = stderr {
+      tokio::io::copy(&mut stderr, &mut tokio::io::stderr()).await?;
+    }
+    if !status.success() {
+      return Err(std::io::Error::other(format!("CGI program exited with {}", status)).into());
+    }
+  }
 
   let (parts, mut body) = response.into_parts();
   if !parts.status.is_success() {
