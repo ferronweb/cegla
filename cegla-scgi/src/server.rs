@@ -11,6 +11,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWri
 use tokio_util::io::StreamReader;
 
 /// Reads environment variables from the SCGI request.
+#[inline]
 pub async fn read_environment_netstring<R>(mut reader: R) -> Result<CgiEnvironment, std::io::Error>
 where
   R: AsyncBufRead + Unpin,
