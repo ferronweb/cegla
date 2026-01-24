@@ -107,13 +107,13 @@ where
       // If no bytes are read, return an empty response head
       if read_bytes == 0 {
         self.response_head_length = Some(0);
-        return Ok(&[0u8; 0]);
+        return Ok::<&[u8], _>(&[0u8; 0]);
       }
 
       // If the response buffer exceeds the capacity, return an empty response head
       if self.response_buf.len() + read_bytes > RESPONSE_BUFFER_CAPACITY {
         self.response_head_length = Some(0);
-        return Ok(&[0u8; 0]);
+        return Ok::<&[u8], _>(&[0u8; 0]);
       }
 
       // Determine the starting point for searching the "\r\n\r\n" sequence
