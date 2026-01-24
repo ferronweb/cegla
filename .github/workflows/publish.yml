@@ -33,6 +33,8 @@ jobs:
       #  run: cargo test --release
 
       - name: Publish
-        run: cargo workspaces publish --token ${{ secrets.CRATES_TOKEN }}
+        run: |
+          git switch -c master
+          cargo workspaces publish --token ${{ secrets.CRATES_TOKEN }} --no-git-commit --publish-as-is
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_TOKEN }}
