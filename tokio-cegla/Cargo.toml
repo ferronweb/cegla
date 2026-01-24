@@ -19,5 +19,4 @@ cegla-cgi = { workspace = true, optional = true }
 shiba = { workspace = true }
 
 [features]
-default = ["cgi-client"]
 cgi-client = ["cegla-cgi", "cegla-cgi/client", "tokio/process", "tokio/rt"]
