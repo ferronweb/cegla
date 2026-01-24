@@ -14,8 +14,8 @@ where
   for (key, value) in &env {
     if let Some(header_raw) = key.strip_prefix("HTTP_") {
       // See https://stackoverflow.com/a/1801191
-      for value in value.split(if header_raw == "COOKIE" { "; " } else { ", " }) {
-        builder = builder.header(header_raw.replace('_', "-").to_lowercase(), value);
+      for value in value.split(if header_raw == "COOKIE" { ";" } else { "," }) {
+        builder = builder.header(header_raw.replace('_', "-").to_lowercase(), value.trim());
       }
     } else {
       match key.as_str() {

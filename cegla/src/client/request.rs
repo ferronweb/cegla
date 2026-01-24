@@ -224,10 +224,10 @@ impl CgiBuilder {
           result
         }
       };
-      if let Some(value) = if env_header_name == "CONTENT_LENGTH" {
-        None
-      } else {
+      if let Some(value) = if env_header_name.starts_with("HTTP_") {
         self.inner.get_mut(&env_header_name)
+      } else {
+        None
       } {
         if env_header_name == "HTTP_COOKIE" {
           value.push_str("; ");

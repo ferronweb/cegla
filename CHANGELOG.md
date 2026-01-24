@@ -3,6 +3,7 @@
 ## `cegla` UNRELEASED
 
 - The `CONTENT_LENGTH` CGI variable is now overridden if it's present before building a `CgiEnvironment`
+- Improved HTTP header environment variable handling consistency between client-side and server-side implementations
 
 ## `cegla` 0.1.2 - January 24, 2025
 
