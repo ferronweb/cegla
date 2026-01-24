@@ -14,6 +14,8 @@ where
   B::Error: Into<std::io::Error>,
 {
   let (mut parts, body) = response.into_parts();
+
+  // CGI-specific "Status" header
   parts.headers.insert(
     HeaderName::from_static("status"),
     HeaderValue::from_str(
@@ -26,6 +28,7 @@ where
     )
     .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid header value"))?,
   );
+
   Ok(CgiResponse {
     body: Box::pin(body),
     headers: Some(parts.headers),

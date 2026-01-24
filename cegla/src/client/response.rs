@@ -31,36 +31,43 @@ where
   let mut status_code = 200;
   for header in headers {
     if header == httparse::EMPTY_HEADER {
+      // No more headers
       break;
     }
     let mut is_status_header = false;
+
     match &header.name.to_lowercase() as &str {
       "location" => {
         if !(300..=399).contains(&status_code) {
+          // Implicitly set status code to 302 if Location header is present
           status_code = 302;
         }
       }
       "status" => {
         is_status_header = true;
-        let header_value_cow = String::from_utf8_lossy(header.value);
-        let mut split_status = header_value_cow.split(" ");
-        let first_part = split_status.next();
-        if let Some(first_part) = first_part {
-          if first_part.starts_with("HTTP/") {
-            let second_part = split_status.next();
-            if let Some(second_part) = second_part {
-              if let Ok(parsed_status_code) = second_part.parse::<u16>() {
-                status_code = parsed_status_code;
-              }
-            }
-          } else if let Ok(parsed_status_code) = first_part.parse::<u16>() {
-            status_code = parsed_status_code;
+        let header_value_str = String::from_utf8_lossy(header.value);
+        let mut split_status = header_value_str.split(" ");
+        let mut status_code_str = split_status.next();
+        let mut had_http_version = false;
+        while status_code_str.is_some_and(|c| {
+          if !had_http_version && c.starts_with("HTTP/") {
+            had_http_version = true;
+            return true;
           }
+          c.is_empty()
+        }) {
+          // Discard HTTP versions and empty strings
+          status_code_str = split_status.next();
+        }
+        if let Some(parsed_status_code) = status_code_str.and_then(|s| s.parse::<u16>().ok()) {
+          status_code = parsed_status_code;
         }
       }
       _ => (),
     }
+
     if !is_status_header {
+      // Status header is CGI-specific
       response_builder = response_builder.header(header.name, header.value);
     }
   }
