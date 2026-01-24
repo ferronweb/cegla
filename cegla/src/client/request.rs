@@ -224,22 +224,18 @@ impl CgiBuilder {
           result
         }
       };
-      if self.inner.contains_key(&env_header_name) {
-        let value = self.inner.get_mut(&env_header_name);
-        if let Some(value) = value {
-          if env_header_name == "HTTP_COOKIE" {
-            value.push_str("; ");
-          } else {
-            // See https://stackoverflow.com/a/1801191
-            value.push_str(", ");
-          }
-          value.push_str(String::from_utf8_lossy(header_value.as_bytes()).as_ref());
+      if let Some(value) = if env_header_name == "CONTENT_LENGTH" {
+        None
+      } else {
+        self.inner.get_mut(&env_header_name)
+      } {
+        if env_header_name == "HTTP_COOKIE" {
+          value.push_str("; ");
         } else {
-          self.inner.insert(
-            env_header_name,
-            String::from_utf8_lossy(header_value.as_bytes()).to_string(),
-          );
+          // See https://stackoverflow.com/a/1801191
+          value.push_str(", ");
         }
+        value.push_str(String::from_utf8_lossy(header_value.as_bytes()).as_ref());
       } else {
         self.inner.insert(
           env_header_name,
