@@ -20,7 +20,13 @@ pub trait Runtime {
   fn spawn(&self, future: impl Future + 'static);
 
   /// Starts a child process with the given command and arguments.
-  fn start_child(&self, cmd: &OsStr, args: &[&OsStr], env: CgiEnvironment) -> Result<Self::Child, std::io::Error>;
+  fn start_child(
+    &self,
+    cmd: &OsStr,
+    args: &[&OsStr],
+    env: CgiEnvironment,
+    cwd: Option<PathBuf>,
+  ) -> Result<Self::Child, std::io::Error>;
 }
 
 /// `Send` runtime trait for CGI "client".
@@ -85,6 +91,7 @@ pub async fn execute_cgi<B, R>(
   cmd: &OsStr,
   args: &[&OsStr],
   env: CgiBuilder,
+  cwd: Option<PathBuf>,
 ) -> Result<
   (
     http::Response<CgiIncoming<CgiResponseInner<<R::Child as Child>::Stdout>>>,
@@ -100,7 +107,7 @@ where
   R: Runtime,
 {
   let (cgi_environment, cgi_data) = env.build(request);
-  let mut child = runtime.start_child(cmd, args, cgi_environment)?;
+  let mut child = runtime.start_child(cmd, args, cgi_environment, cwd)?;
 
   let mut stdin = child.stdin().ok_or(std::io::Error::other("Failed to take stdin"))?;
   let stdout = child.stdout().ok_or(std::io::Error::other("Failed to take stdout"))?;

@@ -2,6 +2,7 @@
 
 ## `cegla` UNRELEASED
 
+- Added `cwd` argument to `start_child` function of `Runtime` trait in `cegla-cgi`
 - The `CONTENT_LENGTH` CGI variable is now overridden if it's present before building a `CgiEnvironment`
 - Improved HTTP header environment variable handling consistency between client-side and server-side implementations
 
