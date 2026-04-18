@@ -37,11 +37,9 @@ where
     let mut is_status_header = false;
 
     match &header.name.to_lowercase() as &str {
-      "location" => {
-        if !(300..=399).contains(&status_code) {
-          // Implicitly set status code to 302 if Location header is present
-          status_code = 302;
-        }
+      "location" if !(300..=399).contains(&status_code) => {
+        // Implicitly set status code to 302 if Location header is present
+        status_code = 302;
       }
       "status" => {
         is_status_header = true;
