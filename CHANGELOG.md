@@ -1,5 +1,9 @@
 # Changelog
 
+## `cegla` UNRELEASED
+
+- Added `vibeio-cegla` (support for `vibeio` async runtime)
+
 ## `cegla` 0.2.0 - March 22, 2026
 
 - Added `cwd` argument to `start_child` function of `Runtime` trait in `cegla-cgi`

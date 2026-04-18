@@ -1,5 +1,5 @@
 [workspace]
-members = ["cegla", "cegla-cgi", "cegla-scgi", "examples", "tokio-cegla"]
+members = ["cegla", "cegla-cgi", "cegla-scgi", "examples", "tokio-cegla", "vibeio-cegla"]
 resolver = "2"
 
 [workspace.dependencies]

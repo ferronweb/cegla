@@ -1,0 +1,24 @@
+[package]
+name = "vibeio-cegla"
+version = "0.2.0"
+edition = "2021"
+authors = ["Dorian Niemiec <dorian@ferron.sh>"]
+description = "`vibeio`-based runtime support for `cegla-*` crates."
+license = "MIT"
+readme = "../README.md"
+keywords = ["http", "cgi", "web"]
+categories = ["web-programming", "network-programming"]
+documentation = "https://docs.rs/vibeio-cegla"
+repository = "https://github.com/ferronweb/cegla"
+
+[dependencies]
+vibeio = "0.2.8"
+cegla-cgi = { workspace = true, optional = true }
+cegla-scgi = { workspace = true, optional = true }
+
+[dev-dependencies]
+shiba = { workspace = true }
+
+[features]
+cgi-client = ["cegla-cgi", "cegla-cgi/client", "vibeio/process"]
+scgi-client = ["cegla-scgi", "cegla-scgi/client"]
