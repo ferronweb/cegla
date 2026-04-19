@@ -29,7 +29,6 @@ tokio-util = { version = "0.7.18", features = ["io", "codec"] }
 shiba = { workspace = true }
 
 [features]
-# TODO: FastCGI client
 default = ["client"]
 client = ["cegla/client", "oneshot", "tokio/sync"]
 server = ["cegla/server"]
