@@ -11,3 +11,8 @@ pub use cgi::*;
 mod scgi;
 #[cfg(feature = "scgi-client")]
 pub use scgi::*;
+
+#[cfg(feature = "fcgi-server")]
+mod fcgi;
+#[cfg(feature = "fcgi-server")]
+pub use fcgi::*;

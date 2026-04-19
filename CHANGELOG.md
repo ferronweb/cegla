@@ -3,6 +3,7 @@
 ## `cegla` UNRELEASED
 
 - Added `vibeio-cegla` (support for `vibeio` async runtime)
+- Added `cegla-fcgi` (a high-level FastCGI implementation for Rust)
 
 ## `cegla` 0.2.0 - March 22, 2026
 

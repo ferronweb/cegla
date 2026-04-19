@@ -15,6 +15,7 @@ repository = "https://github.com/ferronweb/cegla"
 tokio = "1.49.0"
 cegla-cgi = { workspace = true, optional = true }
 cegla-scgi = { workspace = true, optional = true }
+cegla-fcgi = { workspace = true, optional = true }
 
 [dev-dependencies]
 shiba = { workspace = true }
@@ -22,3 +23,4 @@ shiba = { workspace = true }
 [features]
 cgi-client = ["cegla-cgi", "cegla-cgi/client", "tokio/process", "tokio/rt"]
 scgi-client = ["cegla-scgi", "cegla-scgi/client", "tokio/rt"]
+fcgi-server = ["cegla-fcgi", "cegla-fcgi/server", "tokio/rt"]

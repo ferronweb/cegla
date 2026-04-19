@@ -1,10 +1,11 @@
 [workspace]
-members = ["cegla", "cegla-cgi", "cegla-scgi", "examples", "tokio-cegla", "vibeio-cegla"]
+members = ["cegla", "cegla-cgi", "cegla-fcgi", "cegla-scgi", "examples", "tokio-cegla", "vibeio-cegla"]
 resolver = "2"
 
 [workspace.dependencies]
 cegla = "=0.2.0"
 cegla-cgi = "=0.2.0"
+cegla-fcgi = "=0.2.0"
 cegla-scgi = "=0.2.0"
 tokio-cegla = "=0.2.0"
 shiba = "0.1.1"
@@ -12,6 +13,7 @@ shiba = "0.1.1"
 [patch.crates-io]
 cegla = { path = "./cegla" }
 cegla-cgi = { path = "./cegla-cgi" }
+cegla-fcgi = { path = "./cegla-fcgi" }
 cegla-scgi = { path = "./cegla-scgi" }
 tokio-cegla = { path = "./tokio-cegla" }
 
