@@ -35,7 +35,7 @@ pub trait Runtime {
 /// and then converting the HTTP response back to a FastCGI response.
 pub async fn server_handle_fcgi<Io, F, Fut, B, Err, R>(io: Io, runtime: R, request_fn: F) -> Result<(), std::io::Error>
 where
-  Io: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+  Io: AsyncRead + AsyncWrite + Unpin + 'static,
   F: Fn(
       http::Request<
         CgiIncoming<StreamReader<std::pin::Pin<Box<async_channel::Receiver<Result<Bytes, std::io::Error>>>>, Bytes>>,

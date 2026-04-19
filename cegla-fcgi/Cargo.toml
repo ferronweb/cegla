@@ -19,7 +19,9 @@ hashlink = "0.11.0"
 http = "1.4.0"
 http-body = "1.0.1"
 http-body-util = "0.1.3"
+oneshot = { version = "0.2.1", optional = true, features = ["async"] }
 parking_lot = "0.12.5"
+pin-project-lite = "0.2.17"
 tokio = { version = "1.49.0", features = ["rt", "macros"] }
 tokio-util = { version = "0.7.18", features = ["io", "codec"] }
 
@@ -28,7 +30,8 @@ shiba = { workspace = true }
 
 [features]
 # TODO: FastCGI client
-# client = ["cegla/client"]
+default = ["client"]
+client = ["cegla/client", "oneshot", "tokio/sync"]
 server = ["cegla/server"]
 
 [package.metadata.docs.rs]

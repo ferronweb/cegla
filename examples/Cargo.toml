@@ -32,13 +32,16 @@ path = "src/scgi/client.rs"
 name = "fcgi-server"
 path = "src/fcgi/server.rs"
 
+[[bin]]
+name = "fcgi-client"
+path = "src/fcgi/client.rs"
 
 [dependencies]
 bytes = "1.11.0"
 cegla = { workspace = true, features = ["client", "server"] }
 cegla-cgi = { workspace = true, features = ["client", "server"] }
 cegla-scgi = { workspace = true, features = ["client", "server"] }
-cegla-fcgi = { workspace = true, features = ["server"] }
+cegla-fcgi = { workspace = true, features = ["client", "server"] }
 http = "1.4.0"
 http-body-util = "0.1.3"
 tokio = { version = "1.49.0", features = ["full"] }
