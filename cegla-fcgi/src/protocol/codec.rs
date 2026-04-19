@@ -32,32 +32,26 @@ impl CodecDecoder for Decoder {
   type Error = std::io::Error;
 
   fn decode(&mut self, src: &mut tokio_util::bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-    loop {
-      if self.current_buf.len() < 8 {
-        if src.len() >= 8 {
-          self.current_buf.extend(src.split_to(8));
-        } else {
-          return Ok(None);
-        }
-      }
-
-      if self.current_buf.len() >= 8 {
-        let content_length = u16::from_be_bytes(
-          self.current_buf[4..6]
-            .try_into()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
-        ) as usize;
-        let padding_length = self.current_buf[6] as usize;
-        if src.len() >= content_length + padding_length {
-          self.current_buf.extend(src.split_to(content_length + padding_length));
-          let record = Record::decode(&mut &*self.current_buf);
-          self.current_buf.clear();
-          return record;
-        } else {
-          break;
-        }
+    if self.current_buf.len() < 8 {
+      if src.len() >= 8 {
+        self.current_buf.extend(src.split_to(8));
       } else {
-        break;
+        return Ok(None);
+      }
+    }
+
+    if self.current_buf.len() >= 8 {
+      let content_length = u16::from_be_bytes(
+        self.current_buf[4..6]
+          .try_into()
+          .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
+      ) as usize;
+      let padding_length = self.current_buf[6] as usize;
+      if src.len() >= content_length + padding_length {
+        self.current_buf.extend(src.split_to(content_length + padding_length));
+        let record = Record::decode(&mut &*self.current_buf);
+        self.current_buf.clear();
+        return record;
       }
     }
 

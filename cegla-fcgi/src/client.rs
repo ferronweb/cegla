@@ -106,6 +106,7 @@ struct PendingRequest<B> {
 // SentRequest (internal message from SendRequest → Connection)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::type_complexity)]
 struct SentRequest<B> {
   req: http::Request<B>,
   builder: CgiBuilder,
