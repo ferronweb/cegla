@@ -188,6 +188,11 @@ where
       .await
       .map_err(|_| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "unknown error obtaining response"))?
   }
+
+  /// Check if the connection is closed.
+  pub fn is_closed(&self) -> bool {
+    self.send_request_tx.is_closed()
+  }
 }
 
 // ---------------------------------------------------------------------------

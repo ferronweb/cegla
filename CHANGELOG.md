@@ -1,5 +1,9 @@
 # Changelog
 
+## `cegla` UNRELEASED - Not yet released
+
+- Added a function for checking if FastCGI connection is closed in `SendRequest`.
+
 ## `cegla` 0.2.1 - April 19, 2026
 
 - Added `vibeio-cegla` (support for `vibeio` async runtime)
