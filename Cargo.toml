@@ -3,11 +3,11 @@ members = ["cegla", "cegla-cgi", "cegla-fcgi", "cegla-scgi", "examples", "tokio-
 resolver = "2"
 
 [workspace.dependencies]
-cegla = "=0.2.2"
-cegla-cgi = "=0.2.2"
-cegla-fcgi = "=0.2.2"
-cegla-scgi = "=0.2.2"
-tokio-cegla = "=0.2.2"
+cegla = "=0.2.3"
+cegla-cgi = "=0.2.3"
+cegla-fcgi = "=0.2.3"
+cegla-scgi = "=0.2.3"
+tokio-cegla = "=0.2.3"
 shiba = "0.1.1"
 
 [patch.crates-io]
