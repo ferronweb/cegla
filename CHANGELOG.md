@@ -1,6 +1,10 @@
 # Changelog
 
-## `cegla` UNRELEASED - Not yet released
+## `cegla` UNRELEASED - not yet released
+
+- Fixed EOF not being sent for error stream when the client receives FastCGI END_REQUEST record.
+
+## `cegla` 0.2.2 - April 21, 2026
 
 - Added a function for checking if FastCGI connection is closed in `SendRequest`.
 

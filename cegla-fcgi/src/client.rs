@@ -444,8 +444,9 @@ where
             }
             Some(RecordType::EndRequest) => {
               if let Some(pending) = this.pending.get_mut(&request_id) {
-                // Ensure EOF is signalled in case no empty STDOUT was sent.
+                // Ensure EOF is signaled in case no empty STDOUT was sent.
                 let _ = pending.stdout_tx.try_send(None);
+                let _ = pending.stderr_tx.try_send(None);
                 pending.end_received = true;
               }
             }
