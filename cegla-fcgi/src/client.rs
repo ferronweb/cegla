@@ -417,6 +417,7 @@ where
     // ------------------------------------------------------------------
     // 4. Read incoming FastCGI records and dispatch them
     // ------------------------------------------------------------------
+    let mut read_end = false;
     loop {
       match this.reader.poll_next_unpin(cx) {
         Poll::Ready(Some(Ok(record))) => {
@@ -458,7 +459,10 @@ where
         Poll::Ready(Some(Err(e))) => {
           return Poll::Ready(Err(e));
         }
-        Poll::Ready(None) => break,
+        Poll::Ready(None) => {
+          read_end = true;
+          break;
+        }
         Poll::Pending => break,
       }
     }
@@ -479,6 +483,11 @@ where
     for id in finished_ids {
       this.pending.remove(&id);
       this.id_alloc.free(id);
+    }
+
+    // If the reader has ended and there are no pending requests, we're done.
+    if read_end && this.pending.is_empty() {
+      return Poll::Ready(Ok(()));
     }
 
     Poll::Pending
