@@ -1,18 +1,18 @@
 [package]
-name = "vibeio-cegla"
+name = "zincio-cegla"
 version = "0.2.3"
 edition = "2021"
 authors = ["Dorian Niemiec <dorian@ferron.sh>"]
-description = "`vibeio`-based runtime support for `cegla-*` crates."
+description = "`zincio`-based runtime support for `cegla-*` crates."
 license = "MIT"
 readme = "../README.md"
 keywords = ["http", "cgi", "web"]
 categories = ["web-programming", "network-programming"]
-documentation = "https://docs.rs/vibeio-cegla"
+documentation = "https://docs.rs/zincio-cegla"
 repository = "https://github.com/ferronweb/cegla"
 
 [dependencies]
-vibeio = "0.2.8"
+zincio = "0.2.22"
 cegla-cgi = { workspace = true, optional = true }
 cegla-scgi = { workspace = true, optional = true }
 cegla-fcgi = { workspace = true, optional = true }
@@ -21,6 +21,6 @@ cegla-fcgi = { workspace = true, optional = true }
 shiba = { workspace = true }
 
 [features]
-cgi-client = ["cegla-cgi", "cegla-cgi/client", "vibeio/process"]
+cgi-client = ["cegla-cgi", "cegla-cgi/client", "zincio/process"]
 scgi-client = ["cegla-scgi", "cegla-scgi/client"]
 fcgi-server = ["cegla-fcgi", "cegla-fcgi/server"]

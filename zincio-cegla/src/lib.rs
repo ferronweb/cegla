@@ -1,6 +1,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! `vibeio`-based runtime support for `cegla-*` crates.
+//! `zincio`-based runtime support for `cegla-*` crates.
 
 #[cfg(feature = "cgi-client")]
 mod cgi;

@@ -9,7 +9,7 @@
 - **`cegla-scgi`** - a high-level SCGI implementation for Rust
 - **`cegla-fcgi`** - a high-level FastCGI implementation for Rust
 - **`tokio-cegla`** - Tokio-based runtime support for `cegla-*` crates
-- **`vibeio-cegla`** - `vibeio`-based runtime support for `cegla-*` crates
+- **`zincio-cegla`** - `zincio`-based runtime support for `cegla-*` crates
 
 ## Examples
 
