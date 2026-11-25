@@ -3,6 +3,7 @@
 ## `cegla` UNRELEASED
 
 - Replaced `vibeio-cegla` with `zincio-cegla`, following the rename of `vibeio` to `zincio`.
+- Fixed FastCGI client dropping response data when the server sends more than 64 STDOUT records before they are read.
 
 ## `cegla` 0.2.3 - April 25, 2026
 

@@ -143,6 +143,29 @@ pin_project_lite::pin_project! {
     id_alloc: IdAllocator,
     // Records waiting to be flushed to the writer.
     write_queue: VecDeque<Record>,
+    // A `FCGI_STDOUT` chunk waiting for room in its request's channel.  While
+    // it waits, no more records are read, so a slow reader slows down the
+    // server instead of losing data.
+    stdout_send: Option<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
+  }
+}
+
+/// Sends a `FCGI_STDOUT` chunk to its [`FcgiResponseReader`], or returns a
+/// future that sends it once the channel has room.
+fn send_stdout(
+  tx: &async_channel::Sender<Option<Vec<u8>>>,
+  chunk: Option<Vec<u8>>,
+) -> Option<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+  match tx.try_send(chunk) {
+    Err(async_channel::TrySendError::Full(chunk)) => {
+      let tx = tx.clone();
+      Some(Box::pin(async move {
+        // An error means the reader is gone, so the chunk is not needed.
+        let _ = tx.send(chunk).await;
+      }))
+    }
+    // Sent, or the reader is gone.
+    _ => None,
   }
 }
 
@@ -419,18 +442,23 @@ where
     // ------------------------------------------------------------------
     let mut read_end = false;
     loop {
+      // Wait until a held-back STDOUT chunk has been delivered.
+      if let Some(send) = this.stdout_send.as_mut() {
+        if send.as_mut().poll(cx).is_pending() {
+          break;
+        }
+        *this.stdout_send = None;
+      }
+
       match this.reader.poll_next_unpin(cx) {
         Poll::Ready(Some(Ok(record))) => {
           let request_id = record.request_id;
           match RecordType::from_u8(record.record_type) {
             Some(RecordType::Stdout) => {
               if let Some(pending) = this.pending.get_mut(&request_id) {
-                if record.content.is_empty() {
-                  // Empty STDOUT = EOF sentinel.
-                  let _ = pending.stdout_tx.try_send(None);
-                } else {
-                  let _ = pending.stdout_tx.try_send(Some(record.content));
-                }
+                // Empty STDOUT = EOF sentinel.
+                let chunk = (!record.content.is_empty()).then_some(record.content);
+                *this.stdout_send = send_stdout(&pending.stdout_tx, chunk);
               }
             }
             Some(RecordType::Stderr) => {
@@ -541,6 +569,7 @@ where
       pending: HashMap::default(),
       id_alloc: IdAllocator::new(),
       write_queue: VecDeque::new(),
+      stdout_send: None,
     },
   ))
 }
@@ -632,6 +661,7 @@ mod tests {
       pending: HashMap::default(),
       id_alloc: IdAllocator::new(),
       write_queue: VecDeque::new(),
+      stdout_send: None,
     };
 
     // Test that we can create a connection
@@ -949,5 +979,96 @@ mod tests {
     // Connection should complete when pending is empty
     let result = connection.await;
     assert!(result.is_ok());
+  }
+
+  /// Encode a response of `records` FCGI_STDOUT records of `size` bytes each
+  /// after a header record.
+  fn make_long_response(request_id: u16, records: usize, size: usize) -> Vec<u8> {
+    let mut result = Vec::new();
+    let header = Record::new(
+      RecordType::Stdout.as_u8(),
+      request_id,
+      b"Content-Type: text/plain\r\n\r\n".to_vec(),
+    );
+    result.extend_from_slice(&header.encode().unwrap());
+    for _ in 0..records {
+      let stdout = Record::new(RecordType::Stdout.as_u8(), request_id, vec![b'x'; size]);
+      result.extend_from_slice(&stdout.encode().unwrap());
+    }
+    let empty_stdout = Record::new(RecordType::Stdout.as_u8(), request_id, vec![]);
+    result.extend_from_slice(&empty_stdout.encode().unwrap());
+    let end_request = Record::new(RecordType::EndRequest.as_u8(), request_id, vec![0, 0, 0, 0, 0, 0, 0, 0]);
+    result.extend_from_slice(&end_request.encode().unwrap());
+    result
+  }
+
+  #[tokio::test]
+  async fn test_long_response_arrives_whole() {
+    // More records than the stdout channel holds, all readable before the
+    // response body is read.
+    let mock_io = MockIo {
+      read_buf: make_long_response(1, 200, 1000),
+      write_buf: Vec::new(),
+      read_pos: 0,
+    };
+
+    let (send_req, connection) = handshake::<MockIo, http_body_util::Full<Bytes>>(mock_io, false)
+      .await
+      .unwrap();
+    let connection_task = tokio::spawn(connection);
+
+    let request = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+
+    let (response, _reader) = send_req.send_request(request, CgiBuilder::new()).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body.len(), 200 * 1000);
+
+    drop(connection_task);
+  }
+
+  #[tokio::test]
+  async fn test_dropped_response_does_not_block_connection() {
+    // The first response is longer than the stdout channel holds and is
+    // dropped unread; the second one behind it must still arrive.
+    let mut mock_data = make_long_response(1, 200, 1000);
+    mock_data.extend_from_slice(&make_long_response(2, 1, 5));
+    let mock_io = MockIo {
+      read_buf: mock_data,
+      write_buf: Vec::new(),
+      read_pos: 0,
+    };
+
+    let (send_req, connection) = handshake::<MockIo, http_body_util::Full<Bytes>>(mock_io, false)
+      .await
+      .unwrap();
+    let connection_task = tokio::spawn(connection);
+
+    let req1 = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/1")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+    let req2 = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/2")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+
+    let f1 = async {
+      // Drop the response with its body unread.
+      send_req.send_request(req1, CgiBuilder::new()).await.unwrap();
+    };
+    let f2 = send_req.send_request(req2, CgiBuilder::new());
+    let ((), res2) = tokio::join!(f1, f2);
+
+    let (response, _reader) = res2.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body.as_ref(), b"xxxxx");
+
+    drop(connection_task);
   }
 }
