@@ -323,7 +323,9 @@ where
 
           // Create the stdout and stderr pipes used by FcgiResponseReader.
           let (stdout_tx, stdout_rx) = async_channel::bounded::<Option<Vec<u8>>>(64);
-          let (stderr_tx, stderr_rx) = async_channel::bounded::<Option<Vec<u8>>>(64);
+          // The stderr reader reaches the caller only with the response, so
+          // stderr sent before the response headers can't wait for it.
+          let (stderr_tx, stderr_rx) = async_channel::unbounded::<Option<Vec<u8>>>();
 
           let reader = FcgiResponseReader {
             rx: Box::pin(stdout_rx),
@@ -1068,6 +1070,48 @@ mod tests {
     let (response, _reader) = res2.unwrap();
     let body = response.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(body.as_ref(), b"xxxxx");
+
+    drop(connection_task);
+  }
+
+  #[tokio::test]
+  async fn test_long_stderr_before_headers_arrives_whole() {
+    // More STDERR records than a channel of 64 holds, all before the response
+    // headers, so before the caller has the stderr reader.
+    let mut mock_data = Vec::new();
+    for _ in 0..200 {
+      let stderr = Record::new(RecordType::Stderr.as_u8(), 1, vec![b'e'; 100]);
+      mock_data.extend_from_slice(&stderr.encode().unwrap());
+    }
+    let empty_stderr = Record::new(RecordType::Stderr.as_u8(), 1, vec![]);
+    mock_data.extend_from_slice(&empty_stderr.encode().unwrap());
+    mock_data.extend_from_slice(&make_mock_response(b"Content-Type: text/plain\r\n\r\nOK"));
+    let mock_io = MockIo {
+      read_buf: mock_data,
+      write_buf: Vec::new(),
+      read_pos: 0,
+    };
+
+    let (send_req, connection) = handshake::<MockIo, http_body_util::Full<Bytes>>(mock_io, false)
+      .await
+      .unwrap();
+    let connection_task = tokio::spawn(connection);
+
+    let request = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+
+    let (response, mut stderr_reader) = send_req.send_request(request, CgiBuilder::new()).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body.as_ref(), b"OK");
+
+    let mut stderr = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr)
+      .await
+      .unwrap();
+    assert_eq!(stderr.len(), 200 * 100);
 
     drop(connection_task);
   }
