@@ -5,6 +5,7 @@
 - Replaced `vibeio-cegla` with `zincio-cegla`, following the rename of `vibeio` to `zincio`.
 - Fixed FastCGI client dropping response data when the server sends more than 64 STDOUT records before they are read.
 - Fixed FastCGI client dropping error output when the server sends more than 64 STDERR records before they are read.
+- Fixed FastCGI client requests hanging, and their connection never ending, when the server closes the connection before it ends them: such requests now fail with `UnexpectedEof`, a response body cut off this way fails instead of ending early, and the connection resolves to an error.
 
 ## `cegla` 0.2.3 - April 25, 2026
 
