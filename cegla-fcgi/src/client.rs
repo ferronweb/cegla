@@ -32,13 +32,17 @@ use crate::protocol::{
 /// [`convert_to_http_response`].
 ///
 /// A `None` sentinel on the channel signals end-of-stream (the server sent an
-/// empty `FCGI_STDOUT` record or an `FCGI_END_REQUEST` record).
+/// empty `FCGI_STDOUT` record or an `FCGI_END_REQUEST` record).  A channel
+/// that closes without it means the connection ended before the stream did,
+/// and reading fails with [`std::io::ErrorKind::UnexpectedEof`].
 pub struct FcgiResponseReader {
   // Incoming chunks of stdout data.  `None` means EOF.
   // Boxed + pinned so that the struct itself is Unpin.
   rx: Pin<Box<async_channel::Receiver<Option<Vec<u8>>>>>,
   // Leftover bytes from the last chunk that haven't been consumed yet.
   leftover: Option<(Vec<u8>, usize)>,
+  // Whether the end-of-stream sentinel has arrived.
+  ended: bool,
 }
 
 // SAFETY: FcgiResponseReader only contains a pinned box (heap-allocated) and
@@ -74,9 +78,21 @@ impl AsyncRead for FcgiResponseReader {
           }
           return Poll::Ready(Ok(()));
         }
-        // EOF sentinel or channel closed.
-        Poll::Ready(Some(None)) | Poll::Ready(None) => {
+        // EOF sentinel.
+        Poll::Ready(Some(None)) => {
+          self.ended = true;
           return Poll::Ready(Ok(()));
+        }
+        // Closed: after the sentinel the stream has ended, without it the
+        // connection ended first.
+        Poll::Ready(None) => {
+          if self.ended {
+            return Poll::Ready(Ok(()));
+          }
+          return Poll::Ready(Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "the FastCGI connection ended before the response did",
+          )));
         }
         Poll::Pending => return Poll::Pending,
       }
@@ -99,6 +115,8 @@ struct PendingRequest<B> {
   stderr_tx: async_channel::Sender<Option<Vec<u8>>>,
   // Whether the `FCGI_END_REQUEST` record has been received.
   end_received: bool,
+  // Whether the stdout end-of-stream sentinel has been sent.
+  stdout_ended: bool,
   // Futures that convert the accumulated stdout into an HTTP response and
   // deliver it through the oneshot channel.
   response_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
@@ -143,6 +161,40 @@ pin_project_lite::pin_project! {
     id_alloc: IdAllocator,
     // Records waiting to be flushed to the writer.
     write_queue: VecDeque<Record>,
+    // A `FCGI_STDOUT` chunk waiting for room in its request's channel.  While
+    // it waits, no more records are read, so a slow reader slows down the
+    // server instead of losing data.
+    stdout_send: Option<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
+    // Requests that were running when the server closed the connection.
+    cut_off: usize,
+  }
+}
+
+/// Sends a `FCGI_STDOUT` chunk to its [`FcgiResponseReader`], or returns a
+/// future that sends it once the channel has room.
+fn send_stdout(
+  tx: &async_channel::Sender<Option<Vec<u8>>>,
+  chunk: Option<Vec<u8>>,
+) -> Option<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+  match tx.try_send(chunk) {
+    Err(async_channel::TrySendError::Full(chunk)) => {
+      let tx = tx.clone();
+      Some(Box::pin(async move {
+        // An error means the reader is gone, so the chunk is not needed.
+        let _ = tx.send(chunk).await;
+      }))
+    }
+    // Sent, or the reader is gone.
+    _ => None,
+  }
+}
+
+/// Sends `result` to the caller of [`SendRequest::send_request`].
+fn answer<T>(ch: oneshot::Sender<T>, result: T) {
+  match ch.send(result) {
+    Ok(()) => {}
+    // The caller stopped waiting: there is no one to give it to.
+    Err(unsent) => drop(unsent),
   }
 }
 
@@ -300,11 +352,14 @@ where
 
           // Create the stdout and stderr pipes used by FcgiResponseReader.
           let (stdout_tx, stdout_rx) = async_channel::bounded::<Option<Vec<u8>>>(64);
-          let (stderr_tx, stderr_rx) = async_channel::bounded::<Option<Vec<u8>>>(64);
+          // The stderr reader reaches the caller only with the response, so
+          // stderr sent before the response headers can't wait for it.
+          let (stderr_tx, stderr_rx) = async_channel::unbounded::<Option<Vec<u8>>>();
 
           let reader = FcgiResponseReader {
             rx: Box::pin(stdout_rx),
             leftover: None,
+            ended: false,
           };
 
           // Spawn the response-conversion future inside the Connection so it
@@ -319,6 +374,7 @@ where
                   FcgiResponseReader {
                     rx: Box::pin(stderr_rx),
                     leftover: None,
+                    ended: false,
                   },
                 )
               }));
@@ -336,6 +392,7 @@ where
               stdout_tx,
               stderr_tx,
               end_received: false,
+              stdout_ended: false,
               response_futures,
             },
           );
@@ -419,18 +476,24 @@ where
     // ------------------------------------------------------------------
     let mut read_end = false;
     loop {
+      // Wait until a held-back STDOUT chunk has been delivered.
+      if let Some(send) = this.stdout_send.as_mut() {
+        if send.as_mut().poll(cx).is_pending() {
+          break;
+        }
+        *this.stdout_send = None;
+      }
+
       match this.reader.poll_next_unpin(cx) {
         Poll::Ready(Some(Ok(record))) => {
           let request_id = record.request_id;
           match RecordType::from_u8(record.record_type) {
             Some(RecordType::Stdout) => {
               if let Some(pending) = this.pending.get_mut(&request_id) {
-                if record.content.is_empty() {
-                  // Empty STDOUT = EOF sentinel.
-                  let _ = pending.stdout_tx.try_send(None);
-                } else {
-                  let _ = pending.stdout_tx.try_send(Some(record.content));
-                }
+                // Empty STDOUT = EOF sentinel.
+                pending.stdout_ended |= record.content.is_empty();
+                let chunk = (!record.content.is_empty()).then_some(record.content);
+                *this.stdout_send = send_stdout(&pending.stdout_tx, chunk);
               }
             }
             Some(RecordType::Stderr) => {
@@ -445,9 +508,18 @@ where
             }
             Some(RecordType::EndRequest) => {
               if let Some(pending) = this.pending.get_mut(&request_id) {
-                // Ensure EOF is signaled in case no empty STDOUT was sent.
-                let _ = pending.stdout_tx.try_send(None);
-                let _ = pending.stderr_tx.try_send(None);
+                // Ensure EOF is signaled in case no empty STDOUT was sent,
+                // waiting for room like a STDOUT chunk: a lost sentinel
+                // makes the reader fail.
+                if !pending.stdout_ended {
+                  pending.stdout_ended = true;
+                  *this.stdout_send = send_stdout(&pending.stdout_tx, None);
+                }
+                // The stderr channel is unbounded, so this fails only when
+                // its reader is gone and needs no sentinel.
+                if let Err(err) = pending.stderr_tx.try_send(None) {
+                  debug_assert!(err.is_closed());
+                }
                 pending.end_received = true;
               }
             }
@@ -485,9 +557,53 @@ where
       this.id_alloc.free(id);
     }
 
-    // If the reader has ended and there are no pending requests, we're done.
-    if read_end && this.pending.is_empty() {
-      return Poll::Ready(Ok(()));
+    if read_end {
+      // The server closed the connection. Requests it didn't end are cut
+      // off: no response will come for them.
+      let mut cut_off = Vec::new();
+      for (&request_id, pending) in this.pending.iter() {
+        if !pending.end_received {
+          cut_off.push(request_id);
+        }
+      }
+      if !cut_off.is_empty() {
+        *this.cut_off += cut_off.len();
+        // No more requests can be sent on this connection.
+        this.send_request_rx.close();
+        while let Ok(SentRequest { req, builder, res_ch }) = this.send_request_rx.try_recv() {
+          // The request is never sent.
+          drop((req, builder));
+          answer(
+            res_ch,
+            Err(std::io::Error::new(
+              std::io::ErrorKind::ConnectionAborted,
+              "FastCGI connection closed before the request was sent",
+            )),
+          );
+        }
+      }
+      for request_id in cut_off {
+        if let Some(pending) = this.pending.remove(&request_id) {
+          // Dropping `pending` drops the caller's response channel and
+          // closes its stdout and stderr channels without the end-of-stream
+          // sentinel, so the caller and the readers fail.
+          drop(pending);
+          this.id_alloc.free(request_id);
+        }
+      }
+      // Requests the server ended finish delivering their responses first.
+      if this.pending.is_empty() {
+        if *this.cut_off > 0 {
+          return Poll::Ready(Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            format!(
+              "the FastCGI server closed the connection with {} requests running",
+              this.cut_off
+            ),
+          )));
+        }
+        return Poll::Ready(Ok(()));
+      }
     }
 
     Poll::Pending
@@ -541,6 +657,8 @@ where
       pending: HashMap::default(),
       id_alloc: IdAllocator::new(),
       write_queue: VecDeque::new(),
+      stdout_send: None,
+      cut_off: 0,
     },
   ))
 }
@@ -632,6 +750,8 @@ mod tests {
       pending: HashMap::default(),
       id_alloc: IdAllocator::new(),
       write_queue: VecDeque::new(),
+      stdout_send: None,
+      cut_off: 0,
     };
 
     // Test that we can create a connection
@@ -949,5 +1069,254 @@ mod tests {
     // Connection should complete when pending is empty
     let result = connection.await;
     assert!(result.is_ok());
+  }
+
+  /// Encode a response of `records` FCGI_STDOUT records of `size` bytes each
+  /// after a header record.
+  fn make_long_response(request_id: u16, records: usize, size: usize) -> Vec<u8> {
+    let mut result = Vec::new();
+    let header = Record::new(
+      RecordType::Stdout.as_u8(),
+      request_id,
+      b"Content-Type: text/plain\r\n\r\n".to_vec(),
+    );
+    result.extend_from_slice(&header.encode().unwrap());
+    for _ in 0..records {
+      let stdout = Record::new(RecordType::Stdout.as_u8(), request_id, vec![b'x'; size]);
+      result.extend_from_slice(&stdout.encode().unwrap());
+    }
+    let empty_stdout = Record::new(RecordType::Stdout.as_u8(), request_id, vec![]);
+    result.extend_from_slice(&empty_stdout.encode().unwrap());
+    let end_request = Record::new(RecordType::EndRequest.as_u8(), request_id, vec![0, 0, 0, 0, 0, 0, 0, 0]);
+    result.extend_from_slice(&end_request.encode().unwrap());
+    result
+  }
+
+  #[tokio::test]
+  async fn test_long_response_arrives_whole() {
+    // More records than the stdout channel holds, all readable before the
+    // response body is read.
+    let mock_io = MockIo {
+      read_buf: make_long_response(1, 200, 1000),
+      write_buf: Vec::new(),
+      read_pos: 0,
+    };
+
+    let (send_req, connection) = handshake::<MockIo, http_body_util::Full<Bytes>>(mock_io, false)
+      .await
+      .unwrap();
+    let connection_task = tokio::spawn(connection);
+
+    let request = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+
+    let (response, _reader) = send_req.send_request(request, CgiBuilder::new()).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body.len(), 200 * 1000);
+
+    drop(connection_task);
+  }
+
+  #[tokio::test]
+  async fn test_dropped_response_does_not_block_connection() {
+    // The first response is longer than the stdout channel holds and is
+    // dropped unread; the second one behind it must still arrive.
+    let mut mock_data = make_long_response(1, 200, 1000);
+    mock_data.extend_from_slice(&make_long_response(2, 1, 5));
+    let mock_io = MockIo {
+      read_buf: mock_data,
+      write_buf: Vec::new(),
+      read_pos: 0,
+    };
+
+    let (send_req, connection) = handshake::<MockIo, http_body_util::Full<Bytes>>(mock_io, false)
+      .await
+      .unwrap();
+    let connection_task = tokio::spawn(connection);
+
+    let req1 = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/1")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+    let req2 = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/2")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+
+    let f1 = async {
+      // Drop the response with its body unread.
+      send_req.send_request(req1, CgiBuilder::new()).await.unwrap();
+    };
+    let f2 = send_req.send_request(req2, CgiBuilder::new());
+    let ((), res2) = tokio::join!(f1, f2);
+
+    let (response, _reader) = res2.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body.as_ref(), b"xxxxx");
+
+    drop(connection_task);
+  }
+
+  #[tokio::test]
+  async fn test_long_stderr_before_headers_arrives_whole() {
+    // More STDERR records than a channel of 64 holds, all before the response
+    // headers, so before the caller has the stderr reader.
+    let mut mock_data = Vec::new();
+    for _ in 0..200 {
+      let stderr = Record::new(RecordType::Stderr.as_u8(), 1, vec![b'e'; 100]);
+      mock_data.extend_from_slice(&stderr.encode().unwrap());
+    }
+    let empty_stderr = Record::new(RecordType::Stderr.as_u8(), 1, vec![]);
+    mock_data.extend_from_slice(&empty_stderr.encode().unwrap());
+    mock_data.extend_from_slice(&make_mock_response(b"Content-Type: text/plain\r\n\r\nOK"));
+    let mock_io = MockIo {
+      read_buf: mock_data,
+      write_buf: Vec::new(),
+      read_pos: 0,
+    };
+
+    let (send_req, connection) = handshake::<MockIo, http_body_util::Full<Bytes>>(mock_io, false)
+      .await
+      .unwrap();
+    let connection_task = tokio::spawn(connection);
+
+    let request = http::Request::builder()
+      .method("GET")
+      .uri("http://example.com/")
+      .body(http_body_util::Full::<Bytes>::from(b"".as_ref()))
+      .unwrap();
+
+    let (response, mut stderr_reader) = send_req.send_request(request, CgiBuilder::new()).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body.as_ref(), b"OK");
+
+    let mut stderr = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr)
+      .await
+      .unwrap();
+    assert_eq!(stderr.len(), 200 * 100);
+
+    drop(connection_task);
+  }
+}
+
+#[cfg(test)]
+mod cut_off_tests {
+  use super::*;
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+  /// Yields until `task` is done, as long as a ready task could take; whether
+  /// it is done by then.
+  async fn settles<T>(task: &tokio::task::JoinHandle<T>) -> bool {
+    let mut rounds = 0;
+    while rounds < 2000 && !task.is_finished() {
+      tokio::task::yield_now().await;
+      rounds += 1;
+    }
+    task.is_finished()
+  }
+
+  fn record(record_type: RecordType, content: &[u8]) -> Vec<u8> {
+    Record::new(record_type.as_u8(), 1, content.to_vec()).encode().unwrap()
+  }
+
+  fn end_request() -> Vec<u8> {
+    record(RecordType::EndRequest, &[0, 0, 0, 0, 0, 0, 0, 0])
+  }
+
+  /// The outcome of one request to a server that waits for it, answers
+  /// `answer`, and then closes the connection if `close` is set; and the
+  /// outcome of the connection.
+  async fn request(answer: Vec<u8>, close: bool) -> (Result<Bytes, std::io::Error>, Option<std::io::Result<()>>) {
+    let (client_io, mut server_io) = tokio::io::duplex(65536);
+    let (send_req, connection) = handshake::<_, http_body_util::Full<Bytes>>(client_io, true)
+      .await
+      .unwrap();
+    let driver = tokio::spawn(connection);
+    let server = tokio::spawn(async move {
+      let mut buf = vec![0u8; 4096];
+      let read = server_io.read(&mut buf).await.unwrap();
+      assert!(read > 0, "the request arrives");
+      server_io.write_all(&answer).await.unwrap();
+      if close {
+        drop(server_io);
+      } else {
+        // Keep the connection open until the test ends.
+        std::future::pending::<()>().await;
+      }
+    });
+    let req = http::Request::builder()
+      .uri("http://backend/")
+      .body(http_body_util::Full::<Bytes>::from(""))
+      .unwrap();
+    let response = tokio::spawn(async move {
+      let (response, stderr) = send_req.send_request(req, CgiBuilder::new()).await?;
+      drop(stderr);
+      let mut body = response.into_body();
+      let mut bytes = Vec::new();
+      while let Some(frame) = body.frame().await {
+        match frame?.into_data() {
+          Ok(data) => bytes.extend_from_slice(&data),
+          Err(frame) => panic!("a FastCGI response has no trailers: {frame:?}"),
+        }
+      }
+      Ok::<_, std::io::Error>(Bytes::from(bytes))
+    });
+    assert!(settles(&response).await, "the request ends");
+    let outcome = response.await.unwrap();
+    let ended = if settles(&driver).await {
+      Some(driver.await.unwrap())
+    } else {
+      None
+    };
+    server.abort();
+    (outcome, ended)
+  }
+
+  #[tokio::test]
+  async fn a_server_that_closes_before_answering_fails_the_request_and_the_connection() {
+    let (outcome, ended) = request(Vec::new(), true).await;
+    let err = outcome.expect_err("no response");
+    assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
+    let err = ended.expect("the connection ends").expect_err("with an error");
+    assert_eq!(
+      err.to_string(),
+      "the FastCGI server closed the connection with 1 requests running"
+    );
+  }
+
+  #[tokio::test]
+  async fn a_server_that_closes_after_the_headers_fails_the_body() {
+    let answer = record(RecordType::Stdout, b"Content-Type: text/plain\r\n\r\npart");
+    let (outcome, ended) = request(answer, true).await;
+    let err = outcome.expect_err("the body is cut off");
+    assert_eq!(err.to_string(), "the FastCGI connection ended before the response did");
+    assert!(ended.expect("the connection ends").is_err());
+  }
+
+  #[tokio::test]
+  async fn a_server_that_closes_after_answering_ends_the_connection_normally() {
+    let mut answer = record(RecordType::Stdout, b"Content-Type: text/plain\r\n\r\nall");
+    answer.extend(record(RecordType::Stdout, b""));
+    answer.extend(end_request());
+    let (outcome, ended) = request(answer, true).await;
+    assert_eq!(outcome.expect("a response"), Bytes::from_static(b"all"));
+    assert!(ended.expect("the connection ends").is_ok());
+  }
+
+  #[tokio::test]
+  async fn end_request_without_an_empty_stdout_ends_the_body() {
+    let mut answer = record(RecordType::Stdout, b"Content-Type: text/plain\r\n\r\nall");
+    answer.extend(end_request());
+    let (outcome, ended) = request(answer, false).await;
+    assert_eq!(outcome.expect("a response"), Bytes::from_static(b"all"));
+    // The server keeps the connection open; it ends because the request's
+    // handle, the only one, is gone.
+    assert!(ended.expect("the connection ends").is_ok());
   }
 }
